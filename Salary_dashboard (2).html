@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enhanced Salary Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(120deg, #f0f8ff, #e6f7ff);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+      padding: 40px 20px;
+    }
+    h1 {
+      text-align: center;
+      font-weight: 600;
+      margin-bottom: 30px;
+      color: #333;
+    }
+    .upload-section, .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 30px;
+      justify-content: center;
+    }
+    input[type="file"], select {
+      padding: 8px 12px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+    }
+    .chart {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      padding: 10px;
+      margin-bottom: 40px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Interactive Salary Dashboard</h1>
+
+    <div class="upload-section">
+      <input type="file" id="fileInput" accept=".json" />
+    </div>
+
+    <div class="filters">
+      <select id="jobFilter"><option value="">All Job Titles</option></select>
+      <select id="yearFilter"><option value="">All Years</option></select>
+      <select id="typeFilter"><option value="">All Employment Types</option></select>
+    </div>
+
+    <div id="salaryByJobTitle" class="chart"></div>
+    <div id="salaryByExperience" class="chart"></div>
+    <div id="salaryByCountry" class="chart"></div>
+    <div id="salaryVsRemote" class="chart"></div>
+    <div id="salaryByCompanySize" class="chart"></div>
+  </div>
+
+  <script>
+    let data = [];
+
+    document.getElementById('fileInput').addEventListener('change', function (event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function (e) {
+        try {
+          data = JSON.parse(e.target.result);
+          if (!Array.isArray(data)) data = [data];
+          initFilters();
+          renderCharts(data);
+        } catch (err) {
+          alert('Invalid JSON file.');
+        }
+      };
+
+      reader.readAsText(file);
+    });
+
+    function initFilters() {
+      const jobs = [...new Set(data.map(d => d.job_title))];
+      const years = [...new Set(data.map(d => d.work_year))];
+      const types = [...new Set(data.map(d => d.employment_type))];
+
+      populateSelect('jobFilter', jobs);
+      populateSelect('yearFilter', years);
+      populateSelect('typeFilter', types);
+
+      ['jobFilter', 'yearFilter', 'typeFilter'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => renderCharts(data));
+      });
+    }
+
+    function populateSelect(id, values) {
+      const select = document.getElementById(id);
+      values.forEach(val => {
+        const option = document.createElement('option');
+        option.value = val;
+        option.text = val;
+        select.appendChild(option);
+      });
+    }
+
+    function filterData(rawData) {
+      return rawData.filter(d => {
+        const job = document.getElementById('jobFilter').value;
+        const year = document.getElementById('yearFilter').value;
+        const type = document.getElementById('typeFilter').value;
+
+        return (!job || d.job_title === job) &&
+               (!year || d.work_year == year) &&
+               (!type || d.employment_type === type);
+      });
+    }
+
+    function renderCharts(rawData) {
+      const filtered = filterData(rawData);
+
+      renderBarChart(filtered, 'job_title', 'salary_in_usd', 'Average Salary by Job Title', 'salaryByJobTitle');
+      renderBoxPlot(filtered, 'experience_level', 'salary_in_usd', 'Salary Distribution by Experience Level', 'salaryByExperience');
+      renderBarChart(filtered, 'employee_residence', 'salary_in_usd', 'Average Salary by Country', 'salaryByCountry');
+      renderScatterPlot(filtered, 'remote_ratio', 'salary_in_usd', 'Remote Ratio vs Salary', 'salaryVsRemote');
+      renderBarChart(filtered, 'company_size', 'salary_in_usd', 'Salary by Company Size', 'salaryByCompanySize');
+    }
+
+    function renderBarChart(data, groupField, valueField, title, containerId) {
+      const grouped = {};
+      data.forEach(d => {
+        if (!grouped[d[groupField]]) grouped[d[groupField]] = [];
+        grouped[d[groupField]].push(d[valueField]);
+      });
+
+      const x = Object.keys(grouped);
+      const y = x.map(k => grouped[k].reduce((a, b) => a + b, 0) / grouped[k].length);
+
+      Plotly.newPlot(containerId, [{ x, y, type: 'bar', marker: { color: '#007acc' } }], { title });
+    }
+
+    function renderBoxPlot(data, categoryField, valueField, title, containerId) {
+      const categories = [...new Set(data.map(d => d[categoryField]))];
+      const traces = categories.map(c => {
+        return {
+          y: data.filter(d => d[categoryField] === c).map(d => d[valueField]),
+          name: c,
+          type: 'box',
+          marker: { color: '#007acc' }
+        };
+      });
+
+      Plotly.newPlot(containerId, traces, { title });
+    }
+
+    function renderScatterPlot(data, xField, yField, title, containerId) {
+      const trace = {
+        x: data.map(d => d[xField]),
+        y: data.map(d => d[yField]),
+        mode: 'markers',
+        type: 'scatter',
+        marker: { color: '#007acc' }
+      };
+
+      Plotly.newPlot(containerId, [trace], { title, xaxis: { title: xField }, yaxis: { title: yField } });
+    }
+  </script>
+</body>
+</html>
